@@ -119,13 +119,13 @@ $sentimentScore = $sentimentScore.ToString("P") #setting percentage insted of va
 $runPhrases = Invoke-RestMethod -Method post -Headers $TextAnalyticsHeader -uri 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/keyPhrases' -Body $TextAnalyticsBody
 $keyPhrases = $runPhrases.documents.keyPhrases -join ', ' #seperate each phrase with a comma
 
-$TextAnalisys = @{
+$TextAnalysis = @{
     'Sentiment Score' = $sentimentScore
     'Key phrases' = $keyPhrases
     'Translation' = $translatedText
 } 
 
 Write-Output "We have finished your text analysis. Here's the result"
-$TextAnalisys #Print the result
+$TextAnalysis #Print the result
 
 #endregion
