@@ -61,8 +61,8 @@ $TextToTranslate = $text
 $TextToTranslate = $TextToTranslate -replace "[«»""#]","'"
 
 #region Configuration
-$TransaccountKey = "a685053ab97d42399977de5730e7945c"
-$AnalAccountKey = "52c042feb84e4892850579c7303d5ac7"
+$TransaccountKey = "****************"
+$AnalAccountKey = "***************"
 [string]$ToLanguage = "en"
 #endregion
 
