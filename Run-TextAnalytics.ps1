@@ -38,11 +38,11 @@
     
     .CHANGELOG
     12.01.17: v0.5 Beta (Initial release)
-    This version has zero error handling and must be considered POC
+    18.01.17: v0.9 Beta
+    Implemented error handling
 
     .TODO
-    Add error handeling
-    Add support for multiple jobs with one output
+    Add support for multiple jobs with one output. Possibly move to workflow to support parallel processing
 
 
 #>
@@ -55,41 +55,49 @@ param (
     [INT]$ID
     )
 
-Write-Host -ForegroundColor Cyan "This script have no error handling. Please consider it as a proof of concept"
-
 $TextToTranslate = $text
 
 #Replacing characters that are unsupported
 $TextToTranslate = $TextToTranslate -replace "[«»""#]","'"
 
 #region Configuration
-$TransaccountKey = "****"
-$AnalAccountKey = "****"
+$TransaccountKey = "a685053ab97d42399977de5730e7945c"
+$AnalAccountKey = "52c042feb84e4892850579c7303d5ac7"
 [string]$ToLanguage = "en"
 #endregion
 
 #region CreateToken
-$tokenServiceURL = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
-$query = "?Subscription-Key=$TransaccountKey"
-$TokenUri = $tokenServiceUrl+$query
-$token = Invoke-RestMethod -Uri $TokenUri -Method Post
+#We create a translation token used as a header
+try{
+    $tokenServiceURL = "https://api.cognitive.microsoft.com/sts/v1.0/issueToken"
+    $query = "?Subscription-Key=$TransaccountKey"
+    $TokenUri = $tokenServiceUrl+$query
+    $token = Invoke-RestMethod -Uri $TokenUri -Method Post
 
-$auth = "Bearer "+$token
+    $Auth = "Bearer "+$token #setting the token used
+    }
+catch{
+    Write-Output "failed to create token"
+    $_.Exception
+    }
 #endregion
 
 
 #region RunTranslation
-$translationURL = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
-$uri = $translationUrl
 
-
-$RunTrans = Invoke-RestMethod -Method Get -Headers  @{'Authorization' = $Auth} -Uri ('http://api.microsofttranslator.com/v2/Http.svc/Translate?text={0}&to={1}' -f `
+try{
+    $RunTrans = Invoke-RestMethod -Method Get -Headers  @{'Authorization' = $Auth} -Uri ('http://api.microsofttranslator.com/v2/Http.svc/Translate?text={0}&to={1}' -f `
                         ($TextToTranslate, $ToLanguage | %{ [Web.HttpUtility]::UrlEncode($_) } ))
+                        } #translating text
+catch {
+    Write-Output "Failed to run translation. See exception"
+    $_.Exception.Message
+    }
 
 $translatedText = $runTrans.string.'#text'#The translated text
 #replace characters that are unsupported
 $translatedText = $translatedText -replace "[æå]","a"
-$translatedText = $translatedText -replace "[ø]","o"
+$translatedText = $translatedText -replace "[øö]","o"
 $translatedText = $translatedText -replace "[£$]",""
 
 #endregion
@@ -99,33 +107,44 @@ $translatedText = $translatedText -replace "[£$]",""
 $TextAnalyticsHeader = @{
     'Ocp-Apim-Subscription-Key' = $AnalAccountKey
     'Content-Type' = 'application/json'
-    }
+    } #the header with your app key
 
+#the body which contains language of the text, job id and the text it self
 $TextAnalyticsBody = [ordered]@{
     "documents" = 
 	@(
         @{
-        "language" = "en"; 
-        "id" = $id; 
+        "language" = "en";
+        "id" = $id;
         "text" = $translatedText }
     )
 } | ConvertTo-Json
 
+try {
+    $RunSentiment = Invoke-RestMethod -Method post -Headers $TextAnalyticsHeader -uri 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/sentiment' -Body $TextAnalyticsBody
+    $sentimentScore = $RunSentiment.documents.score
+    $sentimentScore = $sentimentScore.ToString("P") #Converting value to percentage
+    }
+catch {
+    if ($($RunSentiment.errors)){
+    Write-Output "Failed to run sentiment"
+    $_.Exception.Message}
+    }
+try {
+    $runPhrases = Invoke-RestMethod -Method post -Headers $TextAnalyticsHeader -uri 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/keyPhrases' -Body $TextAnalyticsBody
+    $keyPhrases = $runPhrases.documents.keyPhrases -join ', ' #seperate each phrase with a comma
+    }
+catch {
+    if ($($runPhrases.errors)){
+    Write-Output "Failed to run phrase"
+    $_.Exception.Message}
+    }
 
-$RunSentiment = Invoke-RestMethod -Method post -Headers $TextAnalyticsHeader -uri 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/sentiment' -Body $TextAnalyticsBody
-$sentimentScore = $RunSentiment.documents.score
-$sentimentScore = $sentimentScore.ToString("P") #setting percentage insted of value
-
-$runPhrases = Invoke-RestMethod -Method post -Headers $TextAnalyticsHeader -uri 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/keyPhrases' -Body $TextAnalyticsBody
-$keyPhrases = $runPhrases.documents.keyPhrases -join ', ' #seperate each phrase with a comma
-
-$TextAnalysis = @{
-    'Sentiment Score' = $sentimentScore
-    'Key phrases' = $keyPhrases
-    'Translation' = $translatedText
-} 
-
-Write-Output "We have finished your text analysis. Here's the result"
-$TextAnalysis #Print the result
+$AnalysisResult = @{
+    'Sentiment Score' = $sentimentScore;
+    'Key phrases' = $keyPhrases;
+    'Text' = $TextToTranslate
+}
+$AnalysisResult
 
 #endregion
